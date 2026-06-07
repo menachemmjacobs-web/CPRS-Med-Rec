@@ -754,6 +754,43 @@ def render_medication_board(timeline: pd.DataFrame, discharge_available: bool) -
     st.markdown(board_html, unsafe_allow_html=True)
 
 
+def board_cell_text(row: Dict[str, Any], column: str) -> str:
+    if row[column] != "Present":
+        return "-"
+    regimen = str(row.get(f"{column} Regimen", "")).strip()
+    medication = str(row["Medication"])
+    return f"{medication} ({regimen})" if regimen else medication
+
+
+def board_export_dataframe(timeline: pd.DataFrame, discharge_available: bool) -> pd.DataFrame:
+    discharge_header = "Proposed DC Med Rec" if discharge_available else "Proposed DC Med Rec (not provided)"
+    rows = []
+
+    for row in timeline.sort_values("Medication").to_dict(orient="records"):
+        rows.append(
+            {
+                "Admission Med Rec": board_cell_text(row, "Admission"),
+                "Inpatient Meds": board_cell_text(row, "Inpatient"),
+                discharge_header: board_cell_text(row, "Discharge"),
+                "Review": board_action_label(row, discharge_available),
+                "Review Details": board_subtext(row, discharge_available),
+                "Priority": row["Priority"],
+            }
+        )
+
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "Admission Med Rec",
+            "Inpatient Meds",
+            discharge_header,
+            "Review",
+            "Review Details",
+            "Priority",
+        ],
+    )
+
+
 def get_openai_api_key() -> str:
     try:
         secret_key = st.secrets.get("OPENAI_API_KEY", "")
@@ -1441,10 +1478,10 @@ if st.session_state.review_ready:
                     },
                 )
 
-        csv = analysis.to_csv(index=False).encode("utf-8")
+        board_csv = board_export_dataframe(timeline, discharge_available).to_csv(index=False).encode("utf-8")
         st.download_button(
-            "Download results as CSV",
-            data=csv,
+            "Download board as CSV",
+            data=board_csv,
             file_name="medication_transition_review.csv",
             mime="text/csv",
         )
